@@ -14,7 +14,6 @@ from ..quantized_tensor import QuantizedTensor, Quantizer, QuantizedTensorStorag
 from .float8_tensor import Float8Tensor, Float8Quantizer, Float8CurrentScalingQuantizer
 from .mxfp8_tensor import MXFP8Tensor, MXFP8Quantizer
 from .float8_blockwise_tensor import Float8BlockwiseQTensor, Float8BlockQuantizer
-from .nvfp4_tensor import NVFP4Tensor, NVFP4Quantizer
 from ..optimizers.multi_tensor_apply import multi_tensor_applier
 from ..utils import is_non_tn_fp8_gemm_supported
 
@@ -37,12 +36,6 @@ def replace_raw_data(tensor: QuantizedTensor, new_raw_data: torch.Tensor):
         tensor._data = new_raw_data
         del old_raw_data
     elif isinstance(tensor, Float8BlockwiseQTensor):
-        old_raw_data = tensor._rowwise_data
-        assert old_raw_data.dtype == new_raw_data.dtype, "The data types of raw data don't match"
-        new_raw_data.detach().copy_(old_raw_data)
-        tensor._rowwise_data = new_raw_data
-        del old_raw_data
-    elif isinstance(tensor, NVFP4Tensor):
         old_raw_data = tensor._rowwise_data
         assert old_raw_data.dtype == new_raw_data.dtype, "The data types of raw data don't match"
         new_raw_data.detach().copy_(old_raw_data)
@@ -137,8 +130,6 @@ def cast_master_weights_to_fp8(
             blockwise_scaling_params.append(
                 (model_weight, master_weight, start_offset, fsdp_shard_model_weight)
             )
-        elif isinstance(quantizer, NVFP4Quantizer):
-            pass
         elif isinstance(quantizer, MXFP8Quantizer):
             raise NotImplementedError(
                 "cast_master_weights_to_fp8 for MXFP8BlockScaling is not supported yet"
@@ -494,8 +485,6 @@ def post_all_gather_processing(model_weights: Union[torch.Tensor, List[torch.Ten
         elif isinstance(model_weight, Float8BlockwiseQTensor):
             # Blockwise scaling: create column-wise storage.
             model_weight._create_columnwise()
-        elif isinstance(model_weight, NVFP4Tensor):
-            pass
         elif isinstance(model_weight, QuantizedTensor):
             raise ValueError(f"post_processing for {type(model_weight)} is not supported")
 
