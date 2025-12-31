@@ -935,6 +935,11 @@ class _Linear(torch.autograd.Function):
                     if os.environ.get('DEBUG_FP4_WGRAD', '0') == '1':
                         print(f"[DEBUG wgrad] ctx.fp8={ctx.fp8}")
                         print(f"[DEBUG wgrad] inputmat_total type={type(inputmat_total).__name__}")
+                        # Get original logical shape
+                        inp_shape = getattr(inputmat_total, '_shape', None)
+                        grad_shape = getattr(grad_output, '_shape', None)
+                        print(f"[DEBUG wgrad] inputmat_total._shape={inp_shape}")
+                        print(f"[DEBUG wgrad] grad_output._shape={grad_shape}")
                         if hasattr(inputmat_total, '_rowwise_data'):
                             rd = inputmat_total._rowwise_data
                             print(f"[DEBUG wgrad] inputmat._rowwise_data: {rd.shape if rd is not None else None}")
@@ -948,6 +953,11 @@ class _Linear(torch.autograd.Function):
                             cd = grad_output._columnwise_data
                             print(f"[DEBUG wgrad] grad_output._columnwise_data: {cd.shape if cd is not None else None}")
                         print(f"[DEBUG wgrad] layout={wgrad_gemm_kwargs.get('layout')}")
+                        # Also print scaling info
+                        if hasattr(inputmat_total, '_scale_inv'):
+                            print(f"[DEBUG wgrad] inputmat scale_inv: {inputmat_total._scale_inv.shape if inputmat_total._scale_inv is not None else None}")
+                        if hasattr(inputmat_total, '_columnwise_scale_inv'):
+                            print(f"[DEBUG wgrad] inputmat columnwise_scale_inv: {inputmat_total._columnwise_scale_inv.shape if inputmat_total._columnwise_scale_inv is not None else None}")
                     wgrad, grad_bias_ = wgrad_gemm(inputmat_total, grad_output)
 
                     # Update grad bias if needed
