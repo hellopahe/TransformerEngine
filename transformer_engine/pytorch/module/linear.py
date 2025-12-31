@@ -401,8 +401,9 @@ class _Linear(torch.autograd.Function):
                     # All-gather is not supported with FP8 column-wise data
                     inputmat.update_usage(rowwise_usage=True, columnwise_usage=False)
                 else:
-                    # Discard row-wise data since it is not needed in backward pass
-                    inputmat.update_usage(rowwise_usage=False, columnwise_usage=True)
+                    # For wgrad GEMM with NT layout, need rowwise data for A operand
+                    # Keep both rowwise and columnwise data for formats that can't convert between them (e.g. NVFP4)
+                    inputmat.update_usage(rowwise_usage=True, columnwise_usage=True)
 
             # Cached input tensor
             saved_inputmat = None
@@ -781,9 +782,11 @@ class _Linear(torch.autograd.Function):
                     inputmat_total_work = None
                 if ctx.fp8 or ctx.debug:
                     if isinstance(inputmat_total, QuantizedTensorStorage):
-                        inputmat_total.update_usage(columnwise_usage=True)
+                        # For wgrad GEMM with NT layout, A (inputmat) needs rowwise data
+                        inputmat_total.update_usage(rowwise_usage=True, columnwise_usage=True)
                     else:
-                        ctx.input_quantizer.set_usage(rowwise=False, columnwise=True)
+                        # For wgrad GEMM with NT layout, A (inputmat) needs rowwise data
+                        ctx.input_quantizer.set_usage(rowwise=True, columnwise=True)
                         inputmat_total = ctx.input_quantizer(inputmat_total)
 
                 # Prepare grad output tensor
@@ -906,29 +909,6 @@ class _Linear(torch.autograd.Function):
                 else:
 
                     # Call wgrad GEMM now
-                    # DEBUG: Print wgrad GEMM input info
-                    import os
-                    if os.environ.get('DEBUG_FP4_WGRAD', '0') == '1':
-                        print(f"[DEBUG wgrad] ctx.fp8={ctx.fp8}, ctx.debug={ctx.debug}")
-                        print(f"[DEBUG wgrad] inputmat_total: type={type(inputmat_total).__name__}, "
-                              f"shape={getattr(inputmat_total, 'shape', 'N/A')}, "
-                              f"dtype={getattr(inputmat_total, 'dtype', 'N/A')}")
-                        print(f"[DEBUG wgrad] grad_output: type={type(grad_output).__name__}, "
-                              f"shape={getattr(grad_output, 'shape', 'N/A')}, "
-                              f"dtype={getattr(grad_output, 'dtype', 'N/A')}")
-                        if hasattr(inputmat_total, '_rowwise_data'):
-                            rd = inputmat_total._rowwise_data
-                            print(f"[DEBUG wgrad] inputmat_total._rowwise_data: {rd.shape if rd is not None else None}")
-                        if hasattr(inputmat_total, '_columnwise_data'):
-                            cd = inputmat_total._columnwise_data
-                            print(f"[DEBUG wgrad] inputmat_total._columnwise_data: {cd.shape if cd is not None else None}")
-                        if hasattr(grad_output, '_rowwise_data'):
-                            rd = grad_output._rowwise_data
-                            print(f"[DEBUG wgrad] grad_output._rowwise_data: {rd.shape if rd is not None else None}")
-                        if hasattr(grad_output, '_columnwise_data'):
-                            cd = grad_output._columnwise_data
-                            print(f"[DEBUG wgrad] grad_output._columnwise_data: {cd.shape if cd is not None else None}")
-                        print(f"[DEBUG wgrad] layout={wgrad_gemm_kwargs.get('layout')}, out_dtype={wgrad_gemm_kwargs.get('out_dtype')}")
                     wgrad, grad_bias_ = wgrad_gemm(inputmat_total, grad_output)
 
                     # Update grad bias if needed
