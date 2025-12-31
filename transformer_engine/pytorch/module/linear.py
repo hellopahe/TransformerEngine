@@ -142,6 +142,12 @@ class _Linear(torch.autograd.Function):
         # Configure tensor-parallel communication
         tp_world_size = get_distributed_world_size(tp_group)
         backward_needs_input = is_grad_enabled and weight.requires_grad
+        if not backward_needs_input and weight.requires_grad:
+            from ..distributed import is_fp8_activation_recompute_enabled, in_fp8_activation_recompute_phase
+            backward_needs_input = (
+                is_fp8_activation_recompute_enabled()
+                and not in_fp8_activation_recompute_phase()
+            )
         with_input_all_gather_nccl = (
             parallel_mode == "column" and sequence_parallel and not ub_overlap_ag_fprop
         )
