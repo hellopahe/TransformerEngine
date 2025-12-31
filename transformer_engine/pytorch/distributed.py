@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from contextlib import contextmanager, AbstractContextManager, ContextDecorator
+from contextlib import contextmanager, AbstractContextManager, ContextDecorator, nullcontext
 from functools import lru_cache
 from dataclasses import dataclass
 import math
@@ -346,8 +346,10 @@ class _CheckpointFunction(torch.autograd.Function):
 
         if context_fn is not None:
             forward_ctx, recompute_ctx = context_fn()
+            context_fn_used = True
         else:
             forward_ctx, recompute_ctx = noop_context_fn()
+            context_fn_used = False
 
         # Preserve torch autocast context for the backward pass
         torch_gpu_amp_ctx, torch_cpu_amp_ctx = _get_active_autocast_contexts()
@@ -379,6 +381,7 @@ class _CheckpointFunction(torch.autograd.Function):
         ctx.fp8 = fp8
         ctx.fp8_recipe = FP8GlobalStateManager.get_fp8_recipe() if fp8 else None
         ctx.kwargs = kwargs
+        ctx.context_fn_used = context_fn_used
 
         return outputs
 
@@ -418,11 +421,14 @@ class _CheckpointFunction(torch.autograd.Function):
 
         # Compute the forward pass.
         detached_inputs = detach_variable(inputs)
+        # When context_fn is used, skip built-in autocast since recompute_ctx already provides FP8/FP4 context
+        if ctx.context_fn_used:
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = autocast(enabled=ctx.fp8, recipe=ctx.fp8_recipe)
         with torch.enable_grad(), ctx.recompute_ctx, ctx.torch_gpu_amp_ctx, ctx.torch_cpu_amp_ctx, activation_recompute_forward(
             activation_recompute=True, recompute_phase=True
-        ), autocast(
-            enabled=ctx.fp8, recipe=ctx.fp8_recipe
-        ):
+        ), autocast_ctx:
             outputs = ctx.run_function(*detached_inputs, **ctx.kwargs)
 
         # Set the states back to what it was at the start of this function.
