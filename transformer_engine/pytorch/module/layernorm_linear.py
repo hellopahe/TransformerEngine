@@ -299,7 +299,14 @@ class _LayerNormLinear(torch.autograd.Function):
             if is_weight_param_quantized:
                 weight_quantizer = weight._quantizer
             elif weight_quantizer is not None:
-                weight_quantizer.set_usage(rowwise=True, columnwise=is_grad_enabled)
+                from ..distributed import is_fp8_activation_recompute_enabled, in_fp8_activation_recompute_phase
+                columnwise_usage = is_grad_enabled
+                if not columnwise_usage:
+                    columnwise_usage = (
+                        is_fp8_activation_recompute_enabled()
+                        and not in_fp8_activation_recompute_phase()
+                    )
+                weight_quantizer.set_usage(rowwise=True, columnwise=columnwise_usage)
 
             # Get quantized weight
             update_workspace = is_first_microbatch is None or is_first_microbatch
