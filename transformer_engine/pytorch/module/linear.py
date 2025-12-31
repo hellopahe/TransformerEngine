@@ -278,6 +278,11 @@ class _Linear(torch.autograd.Function):
                         is_fp8_activation_recompute_enabled()
                         and not in_fp8_activation_recompute_phase()
                     )
+                import os
+                if os.environ.get('DEBUG_FP4_WGRAD', '0') == '1':
+                    print(f"[DEBUG weight] is_grad_enabled={is_grad_enabled}, inp.requires_grad={inp.requires_grad}, "
+                          f"recompute_enabled={is_fp8_activation_recompute_enabled()}, "
+                          f"recompute_phase={in_fp8_activation_recompute_phase()}, columnwise_usage={columnwise_usage}")
                 weight_quantizer.set_usage(rowwise=True, columnwise=columnwise_usage)
             elif isinstance(weight, QuantizedTensor):
                 # If weight is already quantized, no need to set quantizer states
